@@ -1,7 +1,8 @@
 // ==UserScript==
 // @name     Han Simplify
-// @name:zh  ºº×Ö×ª»»Îª¼òÌå×Ö
-// @description ½«Ò³ÃæÉÏµÄºº×Ö×ª»»Îª¼òÌå×Ö£¬ĞèÒªÊÖ¶¯Ìí¼Ó°üº¬µÄÍøÕ¾ÒÔÆôÓÃ
+// @name:zh  æ±‰å­—è½¬æ¢ä¸ºç®€ä½“å­—
+// @description å°†é¡µé¢ä¸Šçš„æ±‰å­—è½¬æ¢ä¸ºç®€ä½“å­—ï¼Œéœ€è¦æ‰‹åŠ¨æ·»åŠ åŒ…å«çš„ç½‘ç«™ä»¥å¯ç”¨
+// @namespace https://github.com/tiansh
 // @version  0.1
 // @resource t2s https://tiansh.github.io/reader/data/han/t2s.json
 // @exclude *
