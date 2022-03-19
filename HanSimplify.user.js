@@ -3,7 +3,7 @@
 // @name:zh 汉字转换为简体字
 // @description 将页面上的汉字转换为简体字，需要手动添加包含的网站以启用
 // @namespace https://github.com/tiansh
-// @version 1.2
+// @version 1.3
 // @resource t2s https://tiansh.github.io/reader/data/han/t2s.json
 // @include *
 // @exclude *
@@ -105,38 +105,47 @@
     translated.set(node, result);
     node.nodeValue = result;
   };
+  const translateTree = function translateTree(node) {
+    if (node instanceof Text) {
+      translateNode(node);
+    } else if (node instanceof Element) {
+      const tagName = node.tagName;
+      if (['SVG', 'MATH', 'SCRIPT', 'STYLE', 'TEXTAREA'].includes(tagName)) return;
+      if (node.attributes.lang && !node.attributes['hanconv-apply']) return;
+      if (node.classList.contains('notranslate')) return;
+      const translate = node.getAttribute('translate');
+      if (translate === 'no') return;
+      if (['CODE', 'VAR'].includes(tagName) && translate !== 'yes') return;
+      [...node.childNodes].forEach(translateTree);
+      if (['APPLET', 'AREA', 'IMG', 'INPUT'].includes(tagName)) translateNode(node.attributes.alt);
+      if (['A', 'AREA'].includes(tagName)) translateNode(node.attributes.download);
+      translateNode(node.attributes.title);
+      translateNode(node.attributes['aria-label']);
+      translateNode(node.attributes['aria-description']);
+    } else if (node instanceof Document) {
+      [...node.childNodes].forEach(translateTree);
+    }
+  };
   /** @param {Element} container */
   const translateContainer = function (container) {
-    if (!needTranslateElement(container)) {
-      [...container.querySelectorAll('[hanconv-apply]')].forEach(translateContainer);
-      return;
-    }
-    (function visit(node) {
-      if (node instanceof Text) {
-        translateNode(node);
-      } else if (node instanceof Element) {
-        const tagName = node.tagName;
-        if (['SVG', 'MATH', 'SCRIPT', 'STYLE'].includes(tagName)) return;
-        if (node.attributes.lang && !node.attributes['hanconv-apply']) return;
-        if (node.classList.contains('notranslate')) return;
-        const translate = node.getAttribute('translate');
-        if (translate === 'no') return;
-        if (['CODE', 'VAR'].includes(tagName) && translate !== 'yes') return;
-        [...node.childNodes].forEach(visit);
-        if (['APPLET', 'AREA', 'IMG', 'INPUT'].includes(tagName)) translateNode(node.attributes.alt);
-        if (['A', 'AREA'].includes(tagName)) translateNode(node.attributes.download);
-        translateNode(node.attributes.title);
-        translateNode(node.attributes['aria-label']);
-        translateNode(node.attributes['aria-description']);
+    if (container instanceof Text) {
+      if (needTranslateElement(container.parentElement)) translateNode(container);
+    } else if (container instanceof Attr) {
+      if (needTranslateElement(container.ownerElement)) translateNode(container);
+    } else if (container instanceof Element) {
+      if (!needTranslateElement(container)) {
+        [...container.querySelectorAll('[hanconv-apply]')].forEach(translateContainer);
+        return;
       }
-    }(container));
+      translateTree(container);
+    } else if (container instanceof Document) {
+      translateTree(container);
+    }
   };
 
-  let timeout = null;
-  const updateInterval = 200;
-  const translateTargets = new Set();
   const observer = new MutationObserver(function onMutate(records) {
     correctLangTags();
+    const translateTargets = new Set();
     records.forEach(record => {
       if (record.type === 'childList') {
         [...record.addedNodes].forEach(node => translateTargets.add(node));
@@ -144,18 +153,14 @@
         translateTargets.add(record.target);
       }
     });
-    if (!timeout) {
-      const targets = [...translateTargets];
-      translateTargets.clear();
-      if (!targets.length) return;
-      targets.forEach(translateContainer);
-      timeout = setTimeout(() => {
-        timeout = null;
-        onMutate([]);
-      }, updateInterval);
-    }
+    [...translateTargets].forEach(translateContainer);
   });
   observer.observe(document, { subtree: true, childList: true, characterData: true, attributes: true });
-  translateContainer(document);
+
+  if (document.readyState === 'complete') {
+    translateContainer(document);
+  } else document.addEventListener('DOMContentLoaded', () => {
+    translateContainer(document);
+  }, { once: true });
 
 }());
