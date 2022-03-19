@@ -3,7 +3,7 @@
 // @name:zh 汉字转换为简体字
 // @description 将页面上的汉字转换为简体字，需要手动添加包含的网站以启用
 // @namespace https://github.com/tiansh
-// @version 1.0
+// @version 1.1
 // @resource t2s https://tiansh.github.io/reader/data/han/t2s.json
 // @include *
 // @exclude *
@@ -119,9 +119,9 @@
         '(//a|//area)/@download',
         '//@title',
         '//@aria-label', '//@aria-description',
-      ].join('|'), container, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-      for (let index = 0; index < nodes.snapshotLength; index++) {
-        translateNode(nodes.snapshotItem(index));
+      ].join('|'), container, null, XPathResult.UNORDERED_NODE_ITERATOR_TYPE, null);
+      for (let node; (node = nodes.iterateNext());) {
+        translateNode(node);
       }
     }
   };
@@ -140,6 +140,7 @@
     });
     if (!timeout) {
       const targets = [...translateTargets].filter((node, _, arr) => !arr.some(other => other !== node && other.contains(node)));
+      if (!targets.length) return;
       translateTargets.clear();
       targets.forEach(translateContainer);
       timeout = setTimeout(() => { timeout = null; onMutate([]); }, updateInterval);
