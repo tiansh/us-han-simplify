@@ -3,7 +3,7 @@
 // @name:zh 汉字转换为简体字
 // @description 将页面上的汉字转换为简体字，需要手动添加包含的网站以启用
 // @namespace https://github.com/tiansh
-// @version 1.1
+// @version 1.2
 // @resource t2s https://tiansh.github.io/reader/data/han/t2s.json
 // @include *
 // @exclude *
@@ -34,11 +34,11 @@
 
   /** @type {{ [ch: string]: [string, number] }[]} */
   const table = await loadTable();
+  const hasOwnProperty = Object.prototype.hasOwnProperty;
   /** @param {string} text */
   const translate = function (text) {
     let output = '';
     let state = 0;
-    const hasOwnProperty = Object.prototype.hasOwnProperty;
     for (let char of text) {
       while (true) {
         const current = table[state];
@@ -93,37 +93,43 @@
     return lang == null || lang.hasAttribute('hanconv-apply');
   };
   /** @param {Text|Attr} node */
-  const needTranslate = function (node) {
+  const needTranslateNode = function (node) {
     if (translated.has(node) && translated.get(node) === node.nodeValue) return false;
     if (/^\s*$/.test(node.nodeValue)) return false;
-    const element = node instanceof Text ? node.parentElement : node.ownerElement;
-    if (!element) return true;
-    return needTranslateElement(element);
+    return true;
   };
   /** @param {Text|Attr} node */
   const translateNode = function (node) {
-    if (!needTranslate(node)) return;
+    if (!node || !needTranslateNode(node)) return;
     const result = translate(node.nodeValue);
     translated.set(node, result);
     node.nodeValue = result;
   };
+  /** @param {Element} container */
   const translateContainer = function (container) {
-    if (container instanceof Text || container instanceof Attr) {
-      translateNode(container);
-    } else if (container instanceof Element) {
-      const nodes = document.evaluate([
-        // Translate text
-        '//text()',
-        // Translate attributes
-        '(//applet|//area|//img|//input)/@alt',
-        '(//a|//area)/@download',
-        '//@title',
-        '//@aria-label', '//@aria-description',
-      ].join('|'), container, null, XPathResult.UNORDERED_NODE_ITERATOR_TYPE, null);
-      for (let node; (node = nodes.iterateNext());) {
-        translateNode(node);
-      }
+    if (!needTranslateElement(container)) {
+      [...container.querySelectorAll('[hanconv-apply]')].forEach(translateContainer);
+      return;
     }
+    (function visit(node) {
+      if (node instanceof Text) {
+        translateNode(node);
+      } else if (node instanceof Element) {
+        const tagName = node.tagName;
+        if (['SVG', 'MATH', 'SCRIPT', 'STYLE'].includes(tagName)) return;
+        if (node.attributes.lang && !node.attributes['hanconv-apply']) return;
+        if (node.classList.contains('notranslate')) return;
+        const translate = node.getAttribute('translate');
+        if (translate === 'no') return;
+        if (['CODE', 'VAR'].includes(tagName) && translate !== 'yes') return;
+        [...node.childNodes].forEach(visit);
+        if (['APPLET', 'AREA', 'IMG', 'INPUT'].includes(tagName)) translateNode(node.attributes.alt);
+        if (['A', 'AREA'].includes(tagName)) translateNode(node.attributes.download);
+        translateNode(node.attributes.title);
+        translateNode(node.attributes['aria-label']);
+        translateNode(node.attributes['aria-description']);
+      }
+    }(container));
   };
 
   let timeout = null;
@@ -139,13 +145,17 @@
       }
     });
     if (!timeout) {
-      const targets = [...translateTargets].filter((node, _, arr) => !arr.some(other => other !== node && other.contains(node)));
-      if (!targets.length) return;
+      const targets = [...translateTargets];
       translateTargets.clear();
+      if (!targets.length) return;
       targets.forEach(translateContainer);
-      timeout = setTimeout(() => { timeout = null; onMutate([]); }, updateInterval);
+      timeout = setTimeout(() => {
+        timeout = null;
+        onMutate([]);
+      }, updateInterval);
     }
   });
   observer.observe(document, { subtree: true, childList: true, characterData: true, attributes: true });
+  translateContainer(document);
 
 }());
