@@ -3,7 +3,7 @@
 // @name:zh 汉字转换为简体字
 // @description 将页面上的汉字转换为简体字，需要手动添加包含的网站以启用
 // @namespace https://github.com/tiansh
-// @version 1.3
+// @version 1.4
 // @resource t2s https://tiansh.github.io/reader/data/han/t2s.json
 // @include *
 // @exclude *
@@ -118,6 +118,7 @@
       if (['CODE', 'VAR'].includes(tagName) && translate !== 'yes') return;
       [...node.childNodes].forEach(translateTree);
       if (['APPLET', 'AREA', 'IMG', 'INPUT'].includes(tagName)) translateNode(node.attributes.alt);
+      if (['INPUT', 'TEXTAREA'].includes(tagName)) translateNode(node.attributes.placeholder);
       if (['A', 'AREA'].includes(tagName)) translateNode(node.attributes.download);
       translateNode(node.attributes.title);
       translateNode(node.attributes['aria-label']);
