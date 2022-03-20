@@ -94,7 +94,7 @@ const RULE = 't2s';
   /** @param {Element} element */
   const needTranslateElement = function (element) {
     if (element.matches('script, style')) return false;
-    if (element.closest('svg, math, .notranslate, [translate="no"], code:not([translate="yes"]), var:not([translate="yes"])')) return false;
+    if (element.closest('svg, math, .notranslate, [translate="no"], code:not([translate="yes"]), var:not([translate="yes"]), [contenteditable="true"]')) return false;
     const lang = element.closest('[lang]');
     return lang == null || lang.hasAttribute('hanconv-apply');
   };
@@ -118,6 +118,8 @@ const RULE = 't2s';
       const tagName = node.tagName;
       if (node.attributes.lang && !node.attributes['hanconv-apply']) return;
       if (node.classList.contains('notranslate')) return;
+      const contenteditable = node.getAttribute('contenteditable');
+      if (contenteditable === 'true') return;
       const translate = node.getAttribute('translate');
       if (translate === 'no') return;
       if (['CODE', 'VAR'].includes(tagName) && translate !== 'yes') return;
