@@ -3,7 +3,7 @@
 // @name:zh 汉字转换为简体字
 // @description 将页面上的汉字转换为简体字，需要手动添加包含的网站以启用
 // @namespace https://github.com/tiansh
-// @version 1.6
+// @version 1.7
 // @resource t2s https://tiansh.github.io/reader/data/han/t2s.json
 // @include *
 // @exclude *
@@ -73,90 +73,114 @@ const RULE = 't2s';
     return output;
   };
 
-  const correctLangTags = function () {
-    [...document.querySelectorAll('[lang]:not([hanconv-lang])')].forEach(element => {
-      const lang = element.getAttribute('lang');
-      element.setAttribute('hanconv-lang', lang);
-      if (RULE === 't2s' && /^zh\b(?:(?!.*-Hans)-(?:TW|HK|MO)|.*-Hant|$)/i.test(lang)) {
-        element.setAttribute('lang', 'zh-Hans');
-      }
-      if (RULE === 's2t' && /^zh\b(?:(?!.*-Hant)-(?:CN|SG|MY)|.*-Hans|$)/i.test(lang)) {
-        element.setAttribute('lang', 'zh-Hant');
-      }
-      if (!/^(?:ja|ko|vi)\b/i.test(lang)) {
-        element.setAttribute('hanconv-apply', 'apply');
-      }
-    });
-  };
+  // Do not characters marked as following languages
+  const skipLang = /^(?:ja|ko|vi)\b/i;
+  // Change lang attribute so correct fonts may be available
+  const fromLang = {
+    t2s: /^zh\b(?:(?!.*-Hans)-(?:TW|HK|MO)|.*-Hant|$)/i,
+    s2t: /^zh\b(?:(?!.*-Hant)-(?:CN|SG|MY)|.*-Hans|$)/i,
+  }[RULE];
+  // Overwrite language attribute with
+  const destLang = { t2s: 'zh-Hans', s2t: 'zh-Hant' }[RULE];
 
   /** @type {WeakMap<Text|Attr, string>} */
   const translated = new WeakMap();
-  /** @param {Element} element */
-  const needTranslateElement = function (element) {
-    if (element.matches('script, style')) return false;
-    if (element.closest('svg, math, .notranslate, [translate="no"], code:not([translate="yes"]), var:not([translate="yes"]), [contenteditable="true"]')) return false;
-    const lang = element.closest('[lang]');
-    return lang == null || lang.hasAttribute('hanconv-apply');
-  };
-  /** @param {Text|Attr} node */
-  const needTranslateNode = function (node) {
-    if (translated.has(node) && translated.get(node) === node.nodeValue) return false;
-    if (/^\s*$/.test(node.nodeValue)) return false;
-    return true;
-  };
   /** @param {Text|Attr} node */
   const translateNode = function (node) {
-    if (!node || !needTranslateNode(node)) return;
+    if (!node) return;
+    if (translated.has(node) && translated.get(node) === node.nodeValue) return;
+    if (/^\s*$/.test(node.nodeValue)) return;
     const result = translate(node.nodeValue);
     translated.set(node, result);
     node.nodeValue = result;
   };
-  const translateTree = function translateTree(node) {
+
+  /** @enum {number} */
+  const filterResult = {
+    TRANSLATE: 0, // Translate this node
+    SKIP_CHILD: 1, // Translate this node but not its children
+    SKIP_LANG: 2, // Do not translate nodes in certain language
+    SKIP_NODE: 3, // Do not translate this node and its children
+  };
+  /**
+   * @param {Document|Element|Text} node
+   * @param {filterResult} context
+   */
+  const nodeFilter = function (node, context = null) {
+    // DOM Root
+    if (node instanceof Document) return filterResult.TRANSLATE;
+    // Inherit skip
+    if (context === filterResult.SKIP_NODE || context === filterResult.SKIP_CHILD) return filterResult.SKIP_NODE;
+    // Text Node
+    if (node instanceof Text) return context === filterResult.TRANSLATE ? filterResult.TRANSLATE : filterResult.SKIP_NODE;
+    // Skip other unknown nodes
+    if (!(node instanceof Element)) return filterResult.SKIP_NODE;
+    // Do not translate nodes which marked no translate
+    if (node.classList.contains('notranslate')) return filterResult.SKIP_NODE;
+    const translate = node.getAttribute('translate');
+    if (translate === 'no') return filterResult.SKIP_NODE;
+    // Do not translate content of certain type elements
+    const tagName = node.tagName;
+    let child = true;
+    if (['CODE', 'VAR'].includes(tagName) && translate !== 'yes') child = false;
+    else if (['SVG', 'MATH', 'SCRIPT', 'STYLE', 'TEXTAREA'].includes(tagName)) child = false;
+    else if (node.getAttribute('contenteditable') === 'true') child = false;
+    const lang = node.getAttribute('lang');
+    // If no language is specified
+    if (!lang) {
+      if (child) return context;
+      return context === filterResult.TRANSLATE ? filterResult.SKIP_CHILD : filterResult.SKIP_NODE;
+    }
+    // If text in languages that should be ignored
+    if (skipLang.test(lang)) {
+      if (child) return filterResult.SKIP_LANG;
+      else return filterResult.SKIP_NODE;
+    }
+    if (fromLang.test(lang)) {
+      node.setAttribute('ori-lang', node.getAttribute('lang'));
+      node.setAttribute('lang', destLang);
+    }
+    if (child) return filterResult.TRANSLATE;
+    else return filterResult.SKIP_CHILD;
+  };
+  /** @param {Text|Element} node */
+  const nodeFilterParents = function (node) {
+    const parents = [];
+    for (let p = node; p; p = p.parentNode) parents.push(p);
+    return parents.reverse().reduce((context, node) => nodeFilter(node, context), filterResult.TRANSLATE);
+  };
+  /**
+   * @param {Node} node
+   * @param {filterResult} context
+   */
+  const translateTree = function translateTree(node, context) {
     if (node instanceof Text) {
-      translateNode(node);
+      if (context === filterResult.TRANSLATE) translateNode(node);
     } else if (node instanceof Element) {
-      const tagName = node.tagName;
-      if (node.attributes.lang && !node.attributes['hanconv-apply']) return;
-      if (node.classList.contains('notranslate')) return;
-      const contenteditable = node.getAttribute('contenteditable');
-      if (contenteditable === 'true') return;
-      const translate = node.getAttribute('translate');
-      if (translate === 'no') return;
-      if (['CODE', 'VAR'].includes(tagName) && translate !== 'yes') return;
-
-      const attrs = node.attributes;
-      if (['APPLET', 'AREA', 'IMG', 'INPUT'].includes(tagName)) translateNode(attrs.alt);
-      if (['INPUT', 'TEXTAREA'].includes(tagName)) translateNode(attrs.placeholder);
-      if (['A', 'AREA'].includes(tagName)) translateNode(attrs.download);
-      translateNode(attrs.title);
-      translateNode(attrs['aria-label']);
-      translateNode(attrs['aria-description']);
-
-      if (['SVG', 'MATH', 'SCRIPT', 'STYLE', 'TEXTAREA'].includes(tagName)) return;
-      [...node.childNodes].forEach(translateTree);
+      const filter = nodeFilter(node, context);
+      if (filter === filterResult.SKIP_CHILD || filter === filterResult.TRANSLATE) {
+        const tagName = node.tagName, attrs = node.attributes;
+        if (['APPLET', 'AREA', 'IMG', 'INPUT'].includes(tagName)) translateNode(attrs.alt);
+        if (['INPUT', 'TEXTAREA'].includes(tagName)) translateNode(attrs.placeholder);
+        if (['A', 'AREA'].includes(tagName)) translateNode(attrs.download);
+        translateNode(attrs.title);
+        translateNode(attrs['aria-label']);
+        translateNode(attrs['aria-description']);
+      }
+      if (filter === filterResult.TRANSLATE || filter === filterResult.SKIP_LANG) {
+        [...node.childNodes].forEach(child => { translateTree(child, filter); });
+      }
     } else if (node instanceof Document) {
-      [...node.childNodes].forEach(translateTree);
+      [...node.childNodes].forEach(child => { translateTree(child, filterResult.TRANSLATE); });
     }
   };
-  /** @param {Element} container */
+  /** @param {Text|Element} container */
   const translateContainer = function (container) {
-    if (container instanceof Text) {
-      if (needTranslateElement(container.parentElement)) translateNode(container);
-    } else if (container instanceof Attr) {
-      if (needTranslateElement(container.ownerElement)) translateNode(container);
-    } else if (container instanceof Element) {
-      if (!needTranslateElement(container)) {
-        [...container.querySelectorAll('[hanconv-apply]')].forEach(translateContainer);
-        return;
-      }
-      translateTree(container);
-    } else if (container instanceof Document) {
-      translateTree(container);
-    }
+    const filter = nodeFilterParents(container);
+    if (filter !== filterResult.SKIP_NODE) translateTree(container, filter);
   };
 
   const observer = new MutationObserver(function onMutate(records) {
-    correctLangTags();
     const translateTargets = new Set();
     records.forEach(record => {
       if (record.type === 'childList') {

@@ -3,7 +3,7 @@
 // @name:zh 漢字轉換為繁體字
 // @description 將頁面上的漢字轉換為繁體字，需要手動添加包含的網站以啟用
 // @namespace https://github.com/tiansh
-// @version 1.6
+// @version 1.7
 // @resource s2t https://tiansh.github.io/reader/data/han/s2t.json
 // @include *
 // @exclude *
